@@ -1,7 +1,12 @@
 import { queryVectors } from '../vector/pinecone.js';
 import { getEmbeddingsModel } from '../services/embed/embedder.js';
 import { env } from '../config/env.js';
-import type { BaseMessageLike } from '@langchain/core/messages';
+import {
+  SystemMessage,
+  HumanMessage,
+  AIMessage,
+  type BaseMessage,
+} from '@langchain/core/messages';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -37,7 +42,7 @@ const INSTRUCTIONS = [
   '- Be concise and technical',
 ].join('\n');
 
-/** Extract plain text from an LLM message content (string or parts). */
+/** Extract plain text from LLM message content (string or parts). */
 function contentToText(content: unknown): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
@@ -83,7 +88,7 @@ function buildContext(matches: {
     .map((m, i) => {
       const md = m.metadata;
       const name = md.functionName || md.className
-        ? ' (' + (md.functionName ?? md.className) + ')'
+        ? ' (' + (md.functionName ?? md.className) + ')
         : '';
       return [
         `--- Chunk ${i + 1}: ${md.filePath}${name} ---`,
@@ -99,7 +104,7 @@ function llmMessages(
   context: string,
   question: string,
   history: ChatMessage[],
-): BaseMessageLike[] {
+): BaseMessage[] {
   const systemText = [
     PROMPT_HEADER,
     '',
@@ -109,17 +114,16 @@ function llmMessages(
     INSTRUCTIONS,
   ].join('\n');
 
-  const msgs: BaseMessageLike[] = [[
-    'system',
-    systemText,
-  ]];
+  const messages: BaseMessage[] = [new SystemMessage(systemText)];
 
   for (const m of history.slice(-5)) {
-    msgs.push([m.role, m.content]);
+    messages.push(m.role === 'user'
+      ? new HumanMessage(m.content)
+      : new AIMessage(m.content));
   }
 
-  msgs.push(['user', 'User Question: ' + question]);
-  return msgs;
+  messages.push(new HumanMessage('User Question: ' + question));
+  return messages;
 }
 
 interface ChatCallOptions {
