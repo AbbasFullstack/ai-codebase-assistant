@@ -14,7 +14,7 @@ export function getEmbeddingsModel() {
     apiKey: env.openaiKey,
     model: env.embeddingModel,
     batchSize: BATCH_SIZE,
-    maxRetries: 0, // we handle retries ourselves
+    // retries handled manually in embedChunks below
   });
 }
 
