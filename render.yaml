@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: ai-codebase-assistant-api
+    runtime: node
+    plan: free
+    buildCommand: cd server && npm install && npm run build
+    startCommand: cd server && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: PINECONE_API_KEY
+        sync: false
+      - key: PINECONE_INDEX
+        value: codebase-assistant
+      - key: PINECONE_ENVIRONMENT
+        value: us-east-1
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false
