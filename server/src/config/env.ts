@@ -3,12 +3,6 @@ import path from 'node:path';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
-function required(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing required env var: ${name}`);
-  return v;
-}
-
 export const env = {
   port: Number(process.env.PORT ?? 4000),
   nodeEnv: process.env.NODE_ENV ?? 'development',
@@ -17,7 +11,8 @@ export const env = {
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? '',
   embeddingModel: process.env.EMBEDDING_MODEL ?? 'text-embedding-3-small',
   pineconeKey: process.env.PINECONE_API_KEY ?? '',
-  pineconeIndex: process.env.PINECONE_INDEX ?? 'codebase-chunks',
+  pineconeIndex: process.env.PINECONE_INDEX ?? 'codebase-assistant',
+  pineconeEnvironment: process.env.PINECONE_ENVIRONMENT ?? '',
   githubToken: process.env.GITHUB_TOKEN ?? '',
   maxFileBytes: Number(process.env.MAX_FILE_BYTES ?? 512000),
   maxFiles: Number(process.env.MAX_FILES ?? 2000),
