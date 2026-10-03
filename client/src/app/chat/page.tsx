@@ -29,8 +29,12 @@ function ChatPageInner() {
     (kind: 'error' | 'success', message: string) => {
       const id = Date.now() + Math.random();
       setToasts((t) => [...t, { id, kind, message }]);
-      setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
+      setTimeout(
+        () => setToasts((t) => t.filter((x) => x.id !== id)),
+        5000,
+      );
     },
+    [],
   );
 
   useEffect(() => {

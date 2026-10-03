@@ -87,15 +87,13 @@ function buildContext(matches: {
   return matches
     .map((m, i) => {
       const md = m.metadata;
-      const name = md.functionName || md.className
-        ? ' (' + (md.functionName ?? md.className) + ')
-        : '';
-      return [
-        `--- Chunk ${i + 1}: ${md.filePath}${name} ---`,
-        `File: ${md.filePath} (lines ${md.startLine}-${md.endLine}, ` +
-          `${md.language})`,
-        md.content ?? '',
-      ].join('\n');
+      const owner = md.functionName ?? md.className ?? '';
+      const name = owner ? ' (' + owner + ')' : '';
+      const header = '--- Chunk ' + (i + 1) + ': ' + md.filePath
+        + name + ' ---';
+      const fileLine = 'File: ' + md.filePath + ' (lines '
+        + md.startLine + '-' + md.endLine + ', ' + md.language + ')';
+      return [header, fileLine, md.content ?? ''].join('\n');
     })
     .join('\n\n');
 }
