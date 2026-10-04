@@ -49,15 +49,18 @@ export default function IngestPage() {
     (kind: 'error' | 'success', message: string) => {
       const id = Date.now() + Math.random();
       setToasts((t) => [...t, { id, kind, message }]);
-      setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 6000);
+      setTimeout(
+        () => setToasts((t) => t.filter((x) => x.id !== id)),
+        6000,
+      );
     },
+    [],
   );
 
   const finishPipeline = useCallback(async (jobId: string) => {
-    // 2. embed
     setPhase('embedding');
     setProgress(10);
-    setStatusText('Chunking and embedding…');
+    setStatusText('Chunking and embedding...');
     await startEmbed(jobId).catch((e: Error) =>
       pushToast('error', 'Embed failed: ' + e.message));
 
@@ -76,10 +79,9 @@ export default function IngestPage() {
       if (st.status === 'done') break;
     }
 
-    // 3. upsert to pinecone
     setPhase('upserting');
     setProgress(95);
-    setStatusText('Storing vectors…');
+    setStatusText('Storing vectors...');
     try {
       await upsertVectors(jobId);
     } catch (e) {
@@ -89,7 +91,7 @@ export default function IngestPage() {
     }
 
     setProgress(100);
-    setStatusText('Ready! Redirecting to chat…');
+    setStatusText('Ready! Redirecting to chat...');
     setPhase('ready');
     await sleep(800);
     router.push('/chat?jobId=' + encodeURIComponent(jobId));
@@ -101,7 +103,7 @@ export default function IngestPage() {
       let jobId: string;
       setPhase('ingesting');
       setProgress(5);
-      setStatusText('Fetching repository…');
+      setStatusText('Fetching repository...');
 
       if (file) {
         const res = await ingestZip(file);
@@ -115,7 +117,6 @@ export default function IngestPage() {
         return;
       }
 
-      // poll ingestion status
       for (;;) {
         await sleep(1500);
         const st = await getIngestStatus(jobId);
@@ -125,7 +126,7 @@ export default function IngestPage() {
           return;
         }
         if (st.status === 'done') {
-          setStatusText(`Parsed ${st.fileCount ?? 0} files`);
+          setStatusText('Parsed ' + (st.fileCount ?? 0) + ' files');
           setProgress(10);
           break;
         }
@@ -150,7 +151,7 @@ export default function IngestPage() {
       <div className="space-y-2 text-center">
         <h1 className="text-3xl font-bold">Ingest a Repository</h1>
         <p className="text-sm text-zinc-400">
-          GitHub repo ya ZIP — code chunks ban ke vector store
+          GitHub repo ya ZIP - code chunks ban ke vector store
           mein index ho jayega.
         </p>
       </div>
@@ -215,7 +216,7 @@ export default function IngestPage() {
             font-semibold text-zinc-950 transition hover:bg-orange-400
             disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {busy ? 'Working…' : 'Ingest Repository'}
+          {busy ? 'Working...' : 'Ingest Repository'}
         </button>
       </div>
 
