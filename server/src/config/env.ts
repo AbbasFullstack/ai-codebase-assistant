@@ -8,9 +8,11 @@ export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   corsOrigin: (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(','),
   // LLM keys — sab optional. Fallback chain:
-  // Anthropic -> OpenAI -> Ollama (free local)
+  // Anthropic -> OpenAI -> Groq -> Ollama (free local)
   openaiKey: process.env.OPENAI_API_KEY ?? '',
   anthropicKey: process.env.ANTHROPIC_API_KEY ?? '',
+  groqKey: process.env.GROQ_API_KEY ?? '',
+  groqModel: process.env.GROQ_MODEL ?? 'llama-3.3-70b-versatile',
   // Embeddings: hf-local (free, no key) | openai
   embeddingProvider: process.env.EMBEDDING_PROVIDER ?? 'hf-local',
   openaiEmbeddingModel: process.env.EMBEDDING_MODEL

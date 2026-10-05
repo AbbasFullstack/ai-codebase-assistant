@@ -78,6 +78,7 @@ function buildContext(matches: {
     filePath: string;
     language: string;
     startLine: number;
+
     endLine: number;
     content?: string;
     functionName?: string;
@@ -139,7 +140,7 @@ interface StreamableLLM {
 }
 
 async function getLLM(): Promise<StreamableLLM> {
-  // Fallback chain: Anthropic -> OpenAI -> Ollama (free local)
+  // Fallback chain: Anthropic -> OpenAI -> Groq -> Ollama (free local)
   if (env.anthropicKey) {
     const { ChatAnthropic } = await import('@langchain/anthropic');
     return new ChatAnthropic({
@@ -153,6 +154,13 @@ async function getLLM(): Promise<StreamableLLM> {
     return new ChatOpenAI({
       apiKey: env.openaiKey,
       model: 'gpt-4o-mini',
+    }) as unknown as StreamableLLM;
+  }
+  if (env.groqKey) {
+    const { ChatGroq } = await import('@langchain/groq');
+    return new ChatGroq({
+      apiKey: env.groqKey,
+      model: env.groqModel,
     }) as unknown as StreamableLLM;
   }
   const { ChatOllama } = await import('@langchain/ollama');

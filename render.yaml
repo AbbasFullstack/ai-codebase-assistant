@@ -13,6 +13,14 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: EMBEDDING_PROVIDER
+        value: hf-local
+      - key: HF_EMBEDDING_MODEL
+        value: Xenova/multilingual-e5-small
       - key: PINECONE_API_KEY
         sync: false
       - key: PINECONE_INDEX

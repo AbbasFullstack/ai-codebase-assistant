@@ -1,168 +1,211 @@
-# AI Codebase Assistant 🤖
+# AI Codebase Assistant
 
 An AI-powered assistant that ingests any GitHub repository (or ZIP),
 chunks the code semantically, embeds it into a vector database, and
 answers your questions with **source-backed citations** (file path + line
 numbers) using a RAG pipeline.
 
-## ✨ Features
+Built on a **fully free stack**: local Hugging Face embeddings, Pinecone
+free tier, and a Groq / Ollama LLM fallback chain. No OpenAI key required.
 
-- **Repository ingestion** — GitHub URL or ZIP upload, 10+ languages,
-  auto-excludes `node_modules`, `dist`, `build`, `.next`, binaries
-- **Semantic chunking** — language-aware separators, function/class name
-  detection, line-number tracking
-- **Embeddings** — OpenAI `text-embedding-3-small/large`, batched (100),
-  exponential-backoff retries
-- **Vector store** — Pinecone (cosine), one namespace per job,
-  auto-cleanup
-- **RAG answers** — LangChain + OpenAI/Anthropic, answers cite files
-- **Streaming chat** — SSE token streaming, markdown + syntax-highlighted
-  code, citations with relevance scores
-- **Job pipeline** — async ingestion → chunking → embedding → upsert
-  with live progress bars
+## Features
 
-## 🧰 Tech Stack
+- Repository ingestion (GitHub URL + ZIP upload)
+- Semantic code chunking with file/line/function metadata
+- Vector search via Pinecone (free tier, 384-dim e5 embeddings)
+- RAG pipeline with citations (filePath, startLine, endLine)
+- Streaming chat UI (SSE) with Next.js + Tailwind
+- LLM fallback chain: Anthropic -> OpenAI -> Groq -> Ollama
+
+## Tech Stack
 
 | Layer | Tech |
-|---|---|
-| Frontend | Next.js 15, React 19, TypeScript, Tailwind CSS v4 |
-| Backend | Node.js, Express, TypeScript |
-| AI | LangChain, OpenAI, Anthropic |
-| Embeddings | OpenAI text-embedding-3-small |
-| Vector DB | Pinecone (serverless, cosine) |
-| Deploy | Vercel (client) + Render (server) |
+| --- | --- |
+| Frontend | Next.js 15, TypeScript, Tailwind CSS |
+| Backend | Node.js, Express |
+| AI orchestration | LangChain |
+| Embeddings | Xenova/multilingual-e5-small via Transformers.js (local, free) |
+| Vector DB | Pinecone free tier (cosine, 384 dims) |
+| LLM | Anthropic / OpenAI / Groq (free tier) / Ollama (local) |
 
-## 🏗️ Architecture
+## Architecture (Free Stack)
 
-```
-┌──────────────┐     POST /api/ingest      ┌──────────────────┐
-│   Next.js    │ ─────────────────────────▶ │    Express API    │
-│   (Vercel)   │                            │     (Render)      │
-│              │     POST /api/rag/query    │                  │
-│  Chat UI     │ ─────────────────────────▶ │  ┌────────────┐  │
-│  (streaming) │◀─────── SSE tokens ──────── │  │ Ingestion  │  │
-└──────────────┘                            │  │  GitHub/ZIP │  │
-                                            │  └─────┬──────┘  │
-                                            │        ▼         │
-                                            │  ┌────────────┐  │
-                                            │  │  Chunker   │  │
-                                            │  └─────┬──────┘  │
-                                            │        ▼         │
-                                            │  ┌────────────┐  │
-                                            │  │ Embeddings │──┼──▶ OpenAI
-                                            │  └─────┬──────┘  │
-                                            │        ▼         │
-                                            │  ┌────────────┐  │
-                                            │  │  Pinecone  │  │
-                                            │  └────────────┘  │
-                                            │        ▼         │
-                                            │  ┌────────────┐  │
-                                            │  │  RAG + LLM │──┼──▶ OpenAI
-                                            │  │ (citations) │  │    /Claude
-                                            │  └────────────┘  │
-                                            └──────────────────┘
-```
+`
+                        +-------------------+
+  GitHub URL / ZIP ---> |  Ingestion API    |
+                        |  (Express)        |
+                        +---------+---------+
+                                  |
+                                  v
+                     +-----------------------+
+                     | Chunker (LangChain   |
+                     | RecursiveSplitter)   |
+                     +----------+------------+
+                                |
+                                v
+                +-------------------------------+
+                | Local HF embeddings           |
+                | (Xenova/multilingual-e5-     |
+                |  small, 384 dims, no API key) |
+                +---------------+---------------+
+                                |
+                                v
+                     +---------------------+
+                     | Pinecone (free tier |
+                     | index, metadata:    |
+                     | path, lines, lang)  |
+                     +----------+----------+
+                                |
+          Chat query ---------> +
+                                |
+                                v
+                +-------------------------------+
+                | LLM fallback chain            |
+                | Anthropic -> OpenAI -> Groq   |
+                | -> Ollama (local)             |
+                +---------------+---------------+
+                                |
+                                v
+                     answer + citations (SSE)
+`
 
-## 📸 Screenshots
+## Quick Start (Local Development)
 
-| Landing | Ingest | Progress | Chat + Streaming | Citations |
-|---|---|---|---|---|
-| TODO | TODO | TODO | TODO | TODO |
-
-> Add screenshots to `docs/screenshots/` after first live run:
->
-> 1. `landing.png` — home page
-> 2. `ingest.png` — GitHub URL input
-> 3. `progress.png` — parsing + embedding progress bar
-> 4. `chat.png` — streaming answer
-> 5. `citations.png` — citations below answer
-
-## 🚀 Local Development
-
-```bash
-git clone https://github.com/AbbasFullstack/ai-codebase-assistant
+`bash
+# 1. Clone and install
+git clone https://github.com/AbbasFullstack/ai-codebase-assistant.git
 cd ai-codebase-assistant
-npm install                # installs both workspaces
-cp .env.example server/.env
-# fill in your keys, then:
-npm run dev                # client :3000 + server :4000
-```
+cd server && npm install && cp .env.example .env
+cd ../client && npm install && cp .env.example .env
 
-## 🔑 Environment Variables
+# 2. Run the backend (http://localhost:4000)
+cd ../server && npm run dev
+
+# 3. Run the frontend (http://localhost:3000)
+cd client && npm run dev
+`
+
+## Free Stack Setup
+
+### 1. Embeddings (free, local)
+
+No OpenAI key needed. Embeddings run locally with Transformers.js using
+Xenova/multilingual-e5-small (384 dimensions). Set:
+
+`bash
+EMBEDDING_PROVIDER=hf-local
+HF_EMBEDDING_MODEL=Xenova/multilingual-e5-small
+`
+
+The Pinecone index is auto-created (384 dims, cosine) on first run.
+
+### 2. Pinecone (free tier, no credit card)
+
+1. Sign up at https://www.pinecone.io (free Starter plan).
+2. Create an API key in the console.
+3. The app auto-creates and connects to the index:
+
+`bash
+PINECONE_API_KEY=pcsk-...
+PINECONE_INDEX=codebase-assistant
+PINECONE_ENVIRONMENT=us-east-1
+`
+
+### 3. LLM (fallback chain: Anthropic -> OpenAI -> Groq -> Ollama)
+
+All keys are optional. The first configured provider is used:
+
+- ANTHROPIC_API_KEY -> Claude Sonnet
+- OPENAI_API_KEY -> gpt-4o-mini
+- GROQ_API_KEY -> llama-3.3-70b-versatile (recommended free option)
+- fallback -> local Ollama
+
+#### Groq (free, no credit card)
+
+`bash
+# Get a key at https://console.groq.com/keys
+GROQ_API_KEY=gsk_...
+GROQ_MODEL=llama-3.3-70b-versatile
+`
+
+#### Ollama (free, local only)
+
+`bash
+# Install Ollama (macOS / Linux)
+curl -fsSL https://ollama.com/install.sh | sh
+
+# Windows: download from https://ollama.com/download
+
+# Pull the model and run
+ollama pull llama3.2
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+`
+
+> Note: Ollama only works when the server runs on your own machine.
+> On Render, use the Groq free tier instead (see below).
+
+## Environment Variables
 
 | Variable | Required | Description |
-|---|---|---|
-| `OPENAI_API_KEY` | ✅ | Embeddings + answers (GPT) |
-| `ANTHROPIC_API_KEY` | optional | If set, Claude answers instead of GPT |
-| `PINECONE_API_KEY` | ✅ | Pinecone vector DB |
-| `PINECONE_INDEX` | ✅ | Index name (default `codebase-assistant`) |
-| `PINECONE_ENVIRONMENT` | ✅ | Serverless region (e.g. `us-east-1`) |
-| `GITHUB_TOKEN` | optional | Higher GitHub API rate limits |
-| `CORS_ORIGIN` | ✅ (prod) | Frontend origin, comma-separated |
-| `MAX_FILE_BYTES` / `MAX_FILES` | optional | Ingestion caps |
-| `NEXT_PUBLIC_API_URL` | ✅ (client) | Backend base URL |
+| --- | --- | --- |
+| PORT | no | Server port (default 4000) |
+| CORS_ORIGIN | no | Allowed origins (comma separated) |
+| EMBEDDING_PROVIDER | no | hf-local (default, free) or openai |
+| HF_EMBEDDING_MODEL | no | Local HF embedding model |
+| EMBEDDING_MODEL | no | OpenAI embedding model (if provider=openai) |
+| PINECONE_API_KEY | yes | Pinecone API key |
+| PINECONE_INDEX | no | Index name (default codebase-assistant) |
+| PINECONE_ENVIRONMENT | no | e.g. us-east-1 |
+| ANTHROPIC_API_KEY | no | Claude (top of LLM chain) |
+| OPENAI_API_KEY | no | OpenAI LLM (2nd) |
+| GROQ_API_KEY | no | Groq free tier (3rd, recommended free option) |
+| GROQ_MODEL | no | Default llama-3.3-70b-versatile |
+| OLLAMA_BASE_URL | no | Local Ollama (final fallback) |
+| OLLAMA_MODEL | no | Default llama3.2 |
+| GITHUB_TOKEN | no | Raises GitHub API rate limits |
 
-## 📡 API Reference
+## API Endpoints
 
-### Ingestion
+| Method | Path | Description |
+| --- | --- | --- |
+| POST | /api/ingest/github | Ingest repo from GitHub URL |
+| POST | /api/ingest/zip | Ingest uploaded ZIP |
+| GET | /api/ingest/status/:jobId | Ingestion status |
+| POST | /api/embed | Chunk + embed a job |
+| GET | /api/embed/status/:jobId | Embedding progress |
+| POST | /api/vector/upsert | Upsert vectors |
+| POST | /api/vector/query | Query vectors |
+| DELETE | /api/vector/namespace/:jobId | Delete namespace |
+| POST | /api/rag/query | RAG answer + citations |
+| GET | /api/rag/query/stream | RAG answer via SSE |
+| GET | /api/health | Health check |
 
-| Method | Endpoint | Body | Response |
-|---|---|---|---|
-| POST | `/api/ingest/github` | `{ repoUrl }` | `202 { jobId }` |
-| POST | `/api/ingest/zip` | multipart `zip` | `202 { jobId }` |
-| GET | `/api/ingest/status/:jobId` | — | status + fileCount |
+## Deployment
 
-### Indexing
+### Backend (Render)
 
-| Method | Endpoint | Body | Response |
-|---|---|---|---|
-| POST | `/api/embed` | `{ jobId }` | `202 { status }` |
-| GET | `/api/embed/status/:jobId` | — | progress |
-| POST | `/api/vector/upsert` | `{ jobId }` | `{ upserted }` |
-| DELETE | `/api/vector/namespace/:jobId` | — | cleanup |
+The repo includes render.yaml (Node web service, free plan).
 
-### RAG
+> Important: the Render free plan has only 512 MB RAM. The local e5
+> embedding model fits, but running Ollama alongside will not. On Render,
+> set GROQ_API_KEY and use the Groq free tier for the LLM. Keep Ollama
+> for local testing only.
 
-| Method | Endpoint | Body | Response |
-|---|---|---|---|
-| POST | `/api/rag/query` | `{ jobId, query, history?, topK? }` | `{ answer, citations }` |
-| POST | `/api/rag/query/stream` | same | SSE: token → citations → done |
+### Frontend (Vercel)
 
-### Other
+- Framework: Next.js (client folder)
+- Env var: NEXT_PUBLIC_API_URL pointing to your Render backend URL
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/health` | Health check (Render) |
+## Screenshots
 
-## ☁️ Deployment
+| Page | Screenshot |
+| --- | --- |
+| Landing | docs/screenshots/landing.png |
+| Ingest | docs/screenshots/ingest.png |
+| Chat + streaming | docs/screenshots/chat.png |
+| Citations | docs/screenshots/citations.png |
 
-### Backend → Render
+## License
 
-1. Push repo to GitHub, keep it public.
-2. Render → **New → Web Service** → connect the repo.
-3. Root dir: `server` · Build: `npm install && npm run build` ·
-   Start: `npm start` · Health check: `/api/health`.
-4. Add env vars (table above). Free tier: server sleeps after 15 min
-   idle — first request after idle is slow, that is expected.
-
-### Frontend → Vercel
-
-1. Vercel → **New Project** → import the repo.
-2. Root directory: `client` (or rely on `vercel.json`).
-3. Add env var `NEXT_PUBLIC_API_URL = https://<your-render-app>.onrender.com`.
-4. Deploy.
-
-### Post-deploy checklist
-
-- [ ] `GET https://<backend>/api/health` returns `{ status: "ok" }`
-- [ ] Frontend ingest → chat flow works end to end
-- [ ] Pinecone namespace created for the first job
-
-## 🔗 Links
-
-- **Live demo:** TODO (add Vercel URL)
-- **GitHub:** https://github.com/AbbasFullstack/ai-codebase-assistant
-
-## 📄 License
-
-MIT © 2026 Abbas Hussain
+MIT
