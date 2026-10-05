@@ -42,7 +42,6 @@ const INSTRUCTIONS = [
   '- Be concise and technical',
 ].join('\n');
 
-/** Extract plain text from LLM message content (string or parts). */
 function contentToText(content: unknown): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
@@ -67,8 +66,9 @@ export async function retrieveContext(
   query: string,
   topK = 5,
 ) {
-  const model = getEmbeddingsModel();
-  const embedding = await model.embedQuery(query);
+  const model = await getEmbeddingsModel();
+  const prefix = env.embeddingProvider === 'openai' ? '' : 'query: ';
+  const embedding = await model.embedQuery(prefix + query);
   return queryVectors(jobId, embedding, topK);
 }
 
@@ -131,39 +131,48 @@ interface ChatCallOptions {
   onToken?: (token: string) => void;
 }
 
+interface StreamableLLM {
+  stream(msgs: BaseMessage[]): Promise<
+    AsyncIterable<{ content: unknown }>
+  >;
+  invoke(msgs: BaseMessage[]): Promise<{ content: unknown }>;
+}
+
+async function getLLM(): Promise<StreamableLLM> {
+  // Fallback chain: Anthropic -> OpenAI -> Ollama (free local)
+  if (env.anthropicKey) {
+    const { ChatAnthropic } = await import('@langchain/anthropic');
+    return new ChatAnthropic({
+      apiKey: env.anthropicKey,
+      model: 'claude-sonnet-4-5',
+      maxTokens: 2048,
+    }) as unknown as StreamableLLM;
+  }
+  if (env.openaiKey) {
+    const { ChatOpenAI } = await import('@langchain/openai');
+    return new ChatOpenAI({
+      apiKey: env.openaiKey,
+      model: 'gpt-4o-mini',
+    }) as unknown as StreamableLLM;
+  }
+  const { ChatOllama } = await import('@langchain/ollama');
+  console.log(
+    '[rag] no API keys — using local Ollama (' + env.ollamaModel + ')',
+  );
+  return new ChatOllama({
+    baseUrl: env.ollamaBaseUrl,
+    model: env.ollamaModel,
+  }) as unknown as StreamableLLM;
+}
+
 async function callLLM(opts: ChatCallOptions): Promise<string> {
   const messages = llmMessages(
     opts.context,
     opts.question,
     opts.history,
   );
+  const llm = await getLLM();
 
-  // Anthropic preferred if key present, else OpenAI
-  if (env.anthropicKey) {
-    const { ChatAnthropic } = await import('@langchain/anthropic');
-    const llm = new ChatAnthropic({
-      apiKey: env.anthropicKey,
-      model: 'claude-sonnet-4-5',
-      maxTokens: 2048,
-    });
-    if (opts.onToken) {
-      let full = '';
-      const stream = await llm.stream(messages);
-      for await (const chunk of stream) {
-        const token = contentToText(chunk.content);
-        if (token) { full += token; opts.onToken(token); }
-      }
-      return full;
-    }
-    const res = await llm.invoke(messages);
-    return contentToText(res.content);
-  }
-
-  const { ChatOpenAI } = await import('@langchain/openai');
-  const llm = new ChatOpenAI({
-    apiKey: env.openaiKey,
-    model: 'gpt-4o-mini',
-  });
   if (opts.onToken) {
     let full = '';
     const stream = await llm.stream(messages);
@@ -173,6 +182,7 @@ async function callLLM(opts: ChatCallOptions): Promise<string> {
     }
     return full;
   }
+
   const res = await llm.invoke(messages);
   return contentToText(res.content);
 }

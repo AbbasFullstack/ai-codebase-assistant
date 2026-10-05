@@ -1,39 +1,72 @@
-import { OpenAIEmbeddings } from '@langchain/openai';
 import { env } from '../../config/env.js';
 import { CodeChunk, EmbeddedChunk } from './types.js';
 
 const BATCH_SIZE = 100; // chunks per embeddings request
 const MAX_RETRIES = 5;
 
+// minimal interface both models satisfy
+interface EmbedModel {
+  embedDocuments(texts: string[]): Promise<number[][]>;
+  embedQuery(text: string): Promise<number[]>;
+}
+
+let cached: EmbedModel | null = null;
+
+export async function getEmbeddingsModel(): Promise<EmbedModel> {
+  if (cached) return cached;
+
+  if (env.embeddingProvider === 'openai') {
+    const { OpenAIEmbeddings } = await import('@langchain/openai');
+    cached = new OpenAIEmbeddings({
+      apiKey: env.openaiKey,
+      model: env.openaiEmbeddingModel,
+      batchSize: BATCH_SIZE,
+    }) as unknown as EmbedModel;
+    return cached;
+  }
+
+  // Free local embeddings via Transformers.js — no API key.
+  // First call downloads the ONNX model (~120MB) to node_modules
+  // cache; afterwards it runs fully offline.
+  const mod = await import(
+    '@langchain/community/embeddings/huggingface_transformers.js'
+  );
+  console.log('[embed] loading local model: ' + env.hfEmbeddingModel);
+  cached = new mod.HuggingFaceTransformersEmbeddings({
+    model: env.hfEmbeddingModel,
+  }) as unknown as EmbedModel;
+  return cached;
+}
+
+/** Vector dimension for the active embedding model (Pinecone). */
+export function embeddingDimension(): number {
+  if (env.embeddingProvider === 'openai') {
+    return env.openaiEmbeddingModel.includes('large') ? 3072 : 1536;
+  }
+  return 384; // multilingual-e5-small
+}
+
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export function getEmbeddingsModel() {
-  return new OpenAIEmbeddings({
-    apiKey: env.openaiKey,
-    model: env.embeddingModel,
-    batchSize: BATCH_SIZE,
-    // retries handled manually in embedChunks below
-  });
-}
-
 /**
  * Embed chunks with batching + exponential-backoff retry.
- * Rate-limit (429) and transient (5xx/timeout) errors are retried.
+ * E5 models expect "passage: " prefix for documents.
  */
 export async function embedChunks(
   chunks: CodeChunk[],
   onProgress?: (embedded: number, total: number) => void,
 ): Promise<EmbeddedChunk[]> {
   if (!chunks.length) return [];
-  const model = getEmbeddingsModel();
+  const model = await getEmbeddingsModel();
   const out: EmbeddedChunk[] = [];
   const total = chunks.length;
+  const prefix = env.embeddingProvider === 'openai' ? '' : 'passage: ';
 
   for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
     const batch = chunks.slice(i, i + BATCH_SIZE);
-    const texts = batch.map((c) => c.text);
+    const texts = batch.map((c) => prefix + c.text);
 
     let attempt = 0;
     for (;;) {
@@ -50,7 +83,9 @@ export async function embedChunks(
               startLine: c.startLine,
               endLine: c.endLine,
               chunkIndex: c.chunkIndex,
-              ...(c.functionName ? { functionName: c.functionName } : {}),
+              ...(c.functionName
+                ? { functionName: c.functionName }
+                : {}),
               ...(c.className ? { className: c.className } : {}),
               text: c.text,
             },

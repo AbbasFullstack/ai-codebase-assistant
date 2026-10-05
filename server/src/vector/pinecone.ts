@@ -1,6 +1,7 @@
 import { Pinecone } from '@pinecone-database/pinecone';
 import { env } from '../config/env.js';
 import { EmbeddedChunk } from '../services/embed/types.js';
+import { embeddingDimension } from '../services/embed/embedder.js';
 
 const UPSERT_BATCH = 100;
 const MAX_RETRIES = 5;
@@ -28,9 +29,7 @@ export function getPinecone(): Pinecone {
     throw new Error('PINECONE_API_KEY is not set');
   }
   if (!client) {
-    client = new Pinecone({
-      apiKey: env.pineconeKey,
-    });
+    client = new Pinecone({ apiKey: env.pineconeKey });
   }
   return client;
 }
@@ -68,11 +67,12 @@ async function withRetry(
 
 /**
  * Create the index if it does not exist (cosine metric).
- * Dimension is derived from the embedding model name.
+ * Dimension is derived from the active embedding model.
  */
-export async function ensureIndex(dimension: number): Promise<void> {
+export async function ensureIndex(): Promise<void> {
   const pc = getPinecone();
   const name = env.pineconeIndex;
+  const dimension = embeddingDimension();
   try {
     await pc.describeIndex(name);
     return; // exists
@@ -90,7 +90,6 @@ export async function ensureIndex(dimension: number): Promise<void> {
       },
     },
   });
-  // wait until ready (max ~60s)
   for (let i = 0; i < 30; i++) {
     try {
       const desc = await pc.describeIndex(name);
@@ -103,10 +102,6 @@ export async function ensureIndex(dimension: number): Promise<void> {
   throw new Error('Pinecone index did not become ready in time');
 }
 
-export function embeddingDimension(): number {
-  return env.embeddingModel.includes('large') ? 3072 : 1536;
-}
-
 /**
  * Upsert embedded chunks in batches of 100.
  * Namespace = jobId (one namespace per ingested repo/job).
@@ -117,7 +112,7 @@ export async function upsertVectors(
   onProgress?: (done: number, total: number) => void,
 ): Promise<number> {
   const pc = getPinecone();
-  await ensureIndex(embeddingDimension());
+  await ensureIndex();
   const index = pc.index(env.pineconeIndex);
 
   const total = chunks.length;
@@ -126,8 +121,8 @@ export async function upsertVectors(
   for (let i = 0; i < chunks.length; i += UPSERT_BATCH) {
     const batch = chunks.slice(i, i + UPSERT_BATCH);
     const vectors = batch.map((c, j) => ({
-      id: jobId + '-' + c.metadata.filePath + '-' + c.metadata.chunkIndex
-        + '-' + (i + j),
+      id: jobId + '-' + c.metadata.filePath + '-'
+        + c.metadata.chunkIndex + '-' + (i + j),
       values: c.embedding,
       metadata: {
         filePath: c.metadata.filePath,
@@ -138,13 +133,16 @@ export async function upsertVectors(
         ...(c.metadata.functionName
           ? { functionName: c.metadata.functionName }
           : {}),
-        ...(c.metadata.className ? { className: c.metadata.className } : {}),
+        ...(c.metadata.className
+          ? { className: c.metadata.className }
+          : {}),
         jobId,
         content: c.metadata.text ?? '',
       },
     }));
 
-    await withRetry('upsert batch ' + Math.floor(i / UPSERT_BATCH), async () => {
+    const batchNo = Math.floor(i / UPSERT_BATCH);
+    await withRetry('upsert batch ' + batchNo, async () => {
       await index.namespace(jobId).upsert(vectors as any);
     });
 
@@ -157,9 +155,6 @@ export async function upsertVectors(
   return upserted;
 }
 
-/**
- * Query similar chunks for an embedding vector within a job namespace.
- */
 export async function queryVectors(
   jobId: string,
   embedding: number[],
@@ -182,9 +177,6 @@ export async function queryVectors(
   }));
 }
 
-/**
- * Delete an entire namespace (cleanup after a job).
- */
 export async function deleteNamespace(jobId: string): Promise<void> {
   const pc = getPinecone();
   const index = pc.index(env.pineconeIndex);

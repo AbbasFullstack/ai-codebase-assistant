@@ -11,12 +11,8 @@ import { getJob } from '../services/ingest/jobManager.js';
 
 const router = Router();
 
-const upsertSchema = z.object({
-  jobId: z.string().min(1),
-});
+const upsertSchema = z.object({ jobId: z.string().min(1) });
 
-// POST /api/vector/upsert  { jobId }
-// Upserts the embedded chunks for a completed embed job into Pinecone.
 router.post('/upsert', async (req, res) => {
   const parsed = upsertSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -44,8 +40,6 @@ const querySchema = z.object({
   topK: z.number().int().min(1).max(50).optional(),
 });
 
-// POST /api/vector/query  { jobId, query, topK? }
-// Embeds the query text and returns similar code chunks from the namespace.
 router.post('/query', async (req, res) => {
   const parsed = querySchema.safeParse(req.body);
   if (!parsed.success) {
@@ -55,7 +49,7 @@ router.post('/query', async (req, res) => {
   }
   const { jobId, query, topK } = parsed.data;
   try {
-    const model = getEmbeddingsModel();
+    const model = await getEmbeddingsModel();
     const embedding = await model.embedQuery(query);
     const matches = await queryVectors(jobId, embedding, topK ?? 8);
     return res.json({ jobId, matches });
@@ -65,7 +59,6 @@ router.post('/query', async (req, res) => {
   }
 });
 
-// DELETE /api/vector/namespace/:jobId
 router.delete('/namespace/:jobId', async (req, res) => {
   const jobId = req.params.jobId;
   if (!getJob(jobId)) {
