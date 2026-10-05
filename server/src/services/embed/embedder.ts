@@ -28,9 +28,7 @@ export async function getEmbeddingsModel(): Promise<EmbedModel> {
   // Free local embeddings via Transformers.js — no API key.
   // First call downloads the ONNX model (~120MB) to node_modules
   // cache; afterwards it runs fully offline.
-  const mod = await import(
-    '@langchain/community/embeddings/huggingface_transformers.js'
-  );
+  const mod = await import('@langchain/community');
   console.log('[embed] loading local model: ' + env.hfEmbeddingModel);
   cached = new mod.HuggingFaceTransformersEmbeddings({
     model: env.hfEmbeddingModel,
@@ -61,6 +59,7 @@ export async function embedChunks(
   if (!chunks.length) return [];
   const model = await getEmbeddingsModel();
   const out: EmbeddedChunk[] = [];
+
   const total = chunks.length;
   const prefix = env.embeddingProvider === 'openai' ? '' : 'passage: ';
 
