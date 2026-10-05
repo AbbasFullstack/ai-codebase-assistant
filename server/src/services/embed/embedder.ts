@@ -26,16 +26,26 @@ export async function getEmbeddingsModel(): Promise<EmbedModel> {
   }
 
   // Free local embeddings via Transformers.js — no API key.
-  // First call downloads the ONNX model (~120MB) to node_modules
-  // cache; afterwards it runs fully offline.
-  const mod = await import('@langchain/community');
+  // First call downloads the ONNX model (~120MB) to the cache;
+  // afterwards it runs fully offline.
+  const { pipeline } = await import('@huggingface/transformers');
   console.log('[embed] loading local model: ' + env.hfEmbeddingModel);
-  cached = new mod.HuggingFaceTransformersEmbeddings({
-    model: env.hfEmbeddingModel,
-  }) as unknown as EmbedModel;
+  const extractor: any = await pipeline(
+    'feature-extraction',
+    env.hfEmbeddingModel,
+  );
+  cached = {
+    embedDocuments: async (texts: string[]) => {
+      const out = await extractor(texts, { pooling: 'mean', normalize: true });
+      return out.tolist() as number[][];
+    },
+    embedQuery: async (text: string) => {
+      const out = await extractor(text, { pooling: 'mean', normalize: true });
+      return (out.tolist() as number[][])[0];
+    },
+  };
   return cached;
 }
-
 /** Vector dimension for the active embedding model (Pinecone). */
 export function embeddingDimension(): number {
   if (env.embeddingProvider === 'openai') {
