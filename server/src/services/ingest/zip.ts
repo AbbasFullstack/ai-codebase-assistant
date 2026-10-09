@@ -27,14 +27,14 @@ export function extractCodeFiles(zipBuffer: Buffer): RepoFile[] {
   // detect single top-level folder prefix
   const topDirs = new Set<string>();
   for (const e of entries) {
-    if (e.isDirectory) continue;
+    if (e.isDirectory || e.entryName.endsWith('/')) continue;
     const parts = e.entryName.split('/');
     if (parts.length > 1) topDirs.add(parts[0]);
   }
   const stripPrefix = topDirs.size === 1 ? [...topDirs][0] + '/' : '';
 
   for (const entry of entries) {
-    if (entry.isDirectory) continue;
+    if (entry.isDirectory || entry.entryName.endsWith('/')) continue;
     const name = entry.entryName;
 
     if (name.startsWith('.') || name.includes('/.git/')) continue;
@@ -63,9 +63,14 @@ export function extractCodeFiles(zipBuffer: Buffer): RepoFile[] {
       language,
       size: buf.length,
     });
-
     if (files.length >= env.maxFiles) break;
   }
 
+  console.log(
+    `[zip] entries: ${entries.length}, extracted code files: ${files.length}` +
+    (files.length === 0 && entries.length > 0
+      ? ' — check file extensions / filters'
+      : ''),
+  );
   return files;
 }

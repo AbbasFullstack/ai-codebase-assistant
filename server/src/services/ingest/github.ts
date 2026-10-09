@@ -42,29 +42,9 @@ export function parseRepoUrl(
 }
 
 async function ghFetch(url: string): Promise<Response> {
-  console.log(`[github] GET ${url}`);
   const res = await fetch(url, { headers: ghHeaders() });
   if (!res.ok) {
     const text = (await res.text()).slice(0, 300);
-    console.error(
-      `[github] ${res.status} ${url} ` +
-      (env.githubToken ? '(token set) ' : '(no token) ') +
-      `body: ${text}`,
-    );
-    if (res.status === 404) {
-      throw new Error(
-        `GitHub API 404: repo not found or not accessible: ${url}. ` +
-        'Check owner/repo spelling (URL is case-sensitive).',
-      );
-    }
-    if (res.status === 403 || res.status === 429) {
-      throw new Error(
-        `GitHub API rate limit hit (${res.status}). ` +
-        (env.githubToken
-          ? 'Token rate limit exceeded — retry later.'
-          : 'Set GITHUB_TOKEN env var (60/hour without token, 5000/hour with token).'),
-      );
-    }
     throw new Error(`GitHub API ${res.status}: ${text}`);
   }
   return res;
@@ -92,7 +72,7 @@ export async function downloadRepoZip(
   branch: string,
 ): Promise<Buffer> {
   const res = await ghFetch(
-    `${GH_API}/repos/${owner}/${repo}/zip/${branch}`,
+    `${GH_API}/repos/${owner}/${repo}/zipball/${branch}`,
   );
   return Buffer.from(await res.arrayBuffer());
 }
