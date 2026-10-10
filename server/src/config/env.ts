@@ -19,6 +19,7 @@ export const env = {
     ?? 'text-embedding-3-small',
   hfEmbeddingModel: process.env.HF_EMBEDDING_MODEL
     ?? 'Xenova/multilingual-e5-small',
+  hfApiKey: process.env.HUGGINGFACE_API_KEY ?? '',
   // Pinecone free tier
   pineconeKey: process.env.PINECONE_API_KEY ?? '',
   pineconeIndex: process.env.PINECONE_INDEX ?? 'codebase-assistant',

@@ -1,7 +1,8 @@
 import { env } from '../../config/env.js';
 import { CodeChunk, EmbeddedChunk } from './types.js';
 
-const BATCH_SIZE = 100; // chunks per embeddings request
+const API_BATCH = 16; // per HF Inference API request
+const LOCAL_BATCH = 100; // chunks per local embeddings pass
 const MAX_RETRIES = 5;
 
 // minimal interface both models satisfy
@@ -12,46 +13,99 @@ interface EmbedModel {
 
 let cached: EmbedModel | null = null;
 
-export async function getEmbeddingsModel(): Promise<EmbedModel> {
-  if (cached) return cached;
-
-  if (env.embeddingProvider === 'openai') {
-    const { OpenAIEmbeddings } = await import('@langchain/openai');
-    cached = new OpenAIEmbeddings({
-      apiKey: env.openaiKey,
-      model: env.openaiEmbeddingModel,
-      batchSize: BATCH_SIZE,
-    }) as unknown as EmbedModel;
-    return cached;
+// --- Hugging Face Inference API (external, fits tiny hosts) ---
+function hfApiModel(): EmbedModel {
+  const url = 'https://api-inference.huggingface.co/models/'
+    + env.hfEmbeddingModel;
+  async function call(texts: string[]): Promise<number[][]> {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + env.hfApiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        inputs: texts,
+        options: { wait_for_model: true },
+      }),
+    });
+    if (!res.ok) {
+      const text = (await res.text()).slice(0, 300);
+      throw new Error('HF Inference API ' + res.status + ': ' + text);
+    }
+    return (await res.json()) as number[][];
   }
+  return {
+    embedDocuments: async (texts) => {
+      const out: number[][] = [];
+      for (let i = 0; i < texts.length; i += API_BATCH) {
+        out.push(...(await call(texts.slice(i, i + API_BATCH))));
+      }
+      return out;
+    },
+    embedQuery: async (text) => (await call([text]))[0],
+  };
+}
 
-  // Free local embeddings via Transformers.js — no API key.
-  // First call downloads the ONNX model (~120MB) to the cache;
-  // afterwards it runs fully offline.
+// --- Local Transformers.js (no key, heavier RAM) ---
+async function localModel(): Promise<EmbedModel> {
   const { pipeline } = await import('@huggingface/transformers');
   console.log('[embed] loading local model: ' + env.hfEmbeddingModel);
   const extractor: any = await pipeline(
     'feature-extraction',
     env.hfEmbeddingModel,
   );
-  cached = {
-    embedDocuments: async (texts: string[]) => {
+  return {
+    embedDocuments: async (texts) => {
       const out = await extractor(texts, { pooling: 'mean', normalize: true });
       return out.tolist() as number[][];
     },
-    embedQuery: async (text: string) => {
+    embedQuery: async (text) => {
       const out = await extractor(text, { pooling: 'mean', normalize: true });
       return (out.tolist() as number[][])[0];
     },
   };
+}
+
+export async function getEmbeddingsModel(): Promise<EmbedModel> {
+  if (cached) return cached;
+
+  // OpenAI embeddings (optional, paid)
+  if (env.embeddingProvider === 'openai' && env.openaiKey) {
+    const { OpenAIEmbeddings } = await import('@langchain/openai');
+    cached = new OpenAIEmbeddings({
+      apiKey: env.openaiKey,
+      model: env.openaiEmbeddingModel,
+      batchSize: LOCAL_BATCH,
+    }) as unknown as EmbedModel;
+    return cached;
+  }
+
+  // Hugging Face Inference API — external, ideal for 512MB hosts.
+  // Used when provider is 'huggingface-api', or any time the key is set.
+  if (env.hfApiKey) {
+    console.log('[embed] using HF Inference API: ' + env.hfEmbeddingModel);
+    cached = hfApiModel();
+    return cached;
+  }
+
+  // Local fallback (free, no key) — needs ~200MB+ free RAM.
+  if (env.embeddingProvider !== 'hf-local') {
+    throw new Error(
+      'EMBEDDING_PROVIDER=' + env.embeddingProvider + ' requires ' +
+      'HUGGINGFACE_API_KEY (or use hf-local).',
+    );
+  }
+  cached = await localModel();
   return cached;
 }
+
 /** Vector dimension for the active embedding model (Pinecone). */
 export function embeddingDimension(): number {
   if (env.embeddingProvider === 'openai') {
     return env.openaiEmbeddingModel.includes('large') ? 3072 : 1536;
   }
-  return 384; // multilingual-e5-small
+  return 384; // multilingual-e5-small (local or HF API)
 }
 
 function sleep(ms: number) {
@@ -72,6 +126,7 @@ export async function embedChunks(
 
   const total = chunks.length;
   const prefix = env.embeddingProvider === 'openai' ? '' : 'passage: ';
+  const BATCH_SIZE = env.hfApiKey ? API_BATCH : LOCAL_BATCH;
 
   for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
     const batch = chunks.slice(i, i + BATCH_SIZE);
