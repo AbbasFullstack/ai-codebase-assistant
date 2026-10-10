@@ -22,7 +22,11 @@ const HF_ENDPOINTS = [
 ];
 
 function hfApiModel(): EmbedModel {
-  const urls = HF_ENDPOINTS.map((e) => e + env.hfEmbeddingModel);
+  // HF Inference needs the original model id; local Transformers.js
+  // needs the Xenova ONNX port. Map automatically when both exist.
+  const model = env.hfApiModel
+    || env.hfEmbeddingModel.replace(/^Xenova\//, 'intfloat/');
+  const urls = HF_ENDPOINTS.map((e) => e + model);
   let workingUrl = urls[0];
 
   async function call(texts: string[]): Promise<number[][]> {
@@ -119,7 +123,7 @@ export async function getEmbeddingsModel(): Promise<EmbedModel> {
   // Hugging Face Inference API — external, ideal for 512MB hosts.
   // Used when provider is 'huggingface-api', or any time the key is set.
   if (env.hfApiKey) {
-    console.log('[embed] using HF Inference API: ' + env.hfEmbeddingModel);
+    console.log('[embed] using HF Inference API: ' + (env.hfApiModel || env.hfEmbeddingModel.replace(/^Xenova\//, 'intfloat/')));
     cached = hfApiModel();
     return cached;
   }

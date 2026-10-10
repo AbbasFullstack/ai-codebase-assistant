@@ -20,6 +20,7 @@ export const env = {
   hfEmbeddingModel: process.env.HF_EMBEDDING_MODEL
     ?? 'Xenova/multilingual-e5-small',
   hfApiKey: process.env.HUGGINGFACE_API_KEY ?? '',
+  hfApiModel: process.env.HF_API_MODEL ?? '',
   // Pinecone free tier
   pineconeKey: process.env.PINECONE_API_KEY ?? '',
   pineconeIndex: process.env.PINECONE_INDEX ?? 'codebase-assistant',
