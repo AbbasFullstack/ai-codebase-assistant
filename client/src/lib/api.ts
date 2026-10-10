@@ -1,5 +1,12 @@
+// Fallback must stay in sync with the current Railway backend URL.
+// Prefer setting NEXT_PUBLIC_API_URL in the Vercel project settings.
 export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+  process.env.NEXT_PUBLIC_API_URL ||
+    'https://ai-codebase-assistant-production-dc57.up.railway.app';
+
+if (typeof window !== 'undefined') {
+  console.log('[api] API_URL:', API_URL);
+}
 
 const BASE = API_URL + '/api';
 
