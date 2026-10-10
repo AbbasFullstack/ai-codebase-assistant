@@ -14,27 +14,62 @@ interface EmbedModel {
 let cached: EmbedModel | null = null;
 
 // --- Hugging Face Inference API (external, fits tiny hosts) ---
+// api-inference.huggingface.co is retired; router.huggingface.co is the
+// current endpoint. Both are tried with logging + 60s timeout.
+const HF_ENDPOINTS = [
+  'https://router.huggingface.co/hf-inference/models/',
+  'https://api-inference.huggingface.co/models/',
+];
+
 function hfApiModel(): EmbedModel {
-  const url = 'https://api-inference.huggingface.co/models/'
-    + env.hfEmbeddingModel;
+  const urls = HF_ENDPOINTS.map((e) => e + env.hfEmbeddingModel);
+  let workingUrl = urls[0];
+
   async function call(texts: string[]): Promise<number[][]> {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + env.hfApiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        inputs: texts,
-        options: { wait_for_model: true },
-      }),
-    });
-    if (!res.ok) {
-      const text = (await res.text()).slice(0, 300);
-      throw new Error('HF Inference API ' + res.status + ': ' + text);
+    let lastErr: unknown = null;
+    const order = [workingUrl, ...urls.filter((u) => u !== workingUrl)];
+    for (const url of order) {
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + env.hfApiKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            inputs: texts,
+            options: { wait_for_model: true },
+          }),
+          signal: AbortSignal.timeout(60_000),
+        });
+        if (!res.ok) {
+          const text = (await res.text()).slice(0, 300);
+          console.error('[embed] HF API ' + res.status + ' ' + url + ' body: ' + text);
+          const rl = res.headers.get('x-ratelimit-remaining');
+          if (rl !== null) console.error('[embed] HF rate limit remaining: ' + rl);
+          throw new Error('HF Inference API ' + res.status + ': ' + text);
+        }
+        workingUrl = url;
+        const data = (await res.json()) as number[][];
+        if (!Array.isArray(data) || !Array.isArray(data[0])) {
+          throw new Error('HF API unexpected response shape: ' + JSON.stringify(data).slice(0, 200));
+        }
+        return data;
+      } catch (err) {
+        lastErr = err;
+        const cause = (err as { cause?: unknown }).cause;
+        console.error(
+          '[embed] HF request failed: ' + url + ' -> ' +
+          (err instanceof Error ? err.message : String(err)) +
+          (cause ? ' cause: ' + String(cause) : ''),
+        );
+      }
     }
-    return (await res.json()) as number[][];
+    throw lastErr instanceof Error
+      ? lastErr
+      : new Error('HF Inference API unreachable');
   }
+
   return {
     embedDocuments: async (texts) => {
       const out: number[][] = [];
